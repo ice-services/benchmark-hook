@@ -13,7 +13,7 @@
   },
   "keywords": [],
   "author": "Ice Services",
-  "license": "None",
+  "license": "ISC",
   "bugs": {
     "url": "https://github.com/ice-services/benchmark-hook/issues"
   },
