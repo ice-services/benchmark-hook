@@ -26,7 +26,6 @@
     "github": "9.2.0",
     "handlebars": "4.0.6",
     "mkdirp": "0.5.1",
-    "nodegit": "0.18.0",
     "nodemon": "1.11.0"
   }
 }

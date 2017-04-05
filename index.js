@@ -9,7 +9,6 @@ const mkdir			= require("mkdirp");
 
 const Handlebars	= require("handlebars");
 const GitHubApi		= require("github");
-const git 			= require("nodegit");
 const exeq 			= require("exeq");
 const del 			= require("del");
 
@@ -108,9 +107,8 @@ function processPush(payload) {
 
 function runBenchmark(gitUrl, command, folder) {
 	return Promise.resolve()
-		.then(() => git.Clone(gitUrl, folder))
-		.then(repo => {
-			return exeq("cd " + folder, "npm i", command)
+		.then(() => {
+			return exeq("git clone " + gitUrl + " " + folder, "cd " + folder, "npm i", command)
 				.then(msgs => {
 					let result = fs.readFileSync(path.join(folder, "bench-results", "simple.json"), "utf8");
 					return JSON.parse(result);
