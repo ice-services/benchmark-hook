@@ -21,7 +21,7 @@ const REPO_NAME = "benchmark-hook-example";
 
 github.authenticate({
 	type: "token",
-	token: "78d77350f6b761a2118d6f3435365600f13437d9"
+	token: process.env.GITHUB_TOKEN
 });
 
 
