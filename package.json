@@ -1,0 +1,32 @@
+{
+  "name": "benchmark-hook",
+  "version": "1.0.0",
+  "description": "Benchmark webhook for Moleculer",
+  "main": "index.js",
+  "scripts": {
+    "dev": "nodemon index.js --watch ./index.js",
+    "start": "node index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ice-services/benchmark-hook.git"
+  },
+  "keywords": [],
+  "author": "Ice Services",
+  "license": "None",
+  "bugs": {
+    "url": "https://github.com/ice-services/benchmark-hook/issues"
+  },
+  "homepage": "https://github.com/ice-services/benchmark-hook#readme",
+  "dependencies": {
+    "body-parser": "1.17.1",
+    "del": "2.2.2",
+    "exeq": "3.0.0",
+    "express": "4.15.2",
+    "github": "9.2.0",
+    "handlebars": "4.0.6",
+    "mkdirp": "0.5.1",
+    "nodegit": "0.18.0",
+    "nodemon": "1.11.0"
+  }
+}
