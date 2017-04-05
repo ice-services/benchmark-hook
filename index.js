@@ -16,6 +16,11 @@ const github = new GitHubApi({
 	debug: false
 });
 
+/*
+	Átírni, hogy ne npm run bench-et hívjon, hanem kapja meg a suite útvonalát és azt futassa a saját benchmark-jával. 
+	Így nem kell fájlba menteni, hanem a benchmark.run-ja tér vissza az eredményekkel és egyből fel is lehet dolgozni.
+*/
+
 const REPO_OWNER = "icebob";
 const REPO_NAME = "benchmark-hook-example";
 
