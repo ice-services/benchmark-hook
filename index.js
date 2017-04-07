@@ -85,7 +85,7 @@ function processPullRequest(payload) {
 			});
 		})
 		.then(compared => {
-			console.log("Compare result:", compared);
+			// console.log("Compare result:", compared);
 
 			// Create comment on PR
 			addCommentToPR(prNumber, compared);
@@ -108,7 +108,7 @@ function processPush(payload) {
 function runBenchmark(gitUrl, branch, folder) {
 	return Promise.resolve()
 		.then(() => {
-			return exeq("git clone " + gitUrl + " " + folder, "cd " + folder, "git checkout " + branch, "npm i")
+			return exeq("git clone " + gitUrl + " " + folder, "cd " + folder, "git checkout " + branch, "npm i --quiet")
 				.then(msgs => {
 					return require(path.join(__dirname, folder, SUITE_FILENAME));
 				})
@@ -125,7 +125,9 @@ function formatNum(num, decimals = 0, addSign = false) {
 function compareResults(masterResult, prResult) {
 	let comparedResult = {
 		name: masterResult.name,
-		suites: []
+		suites: [],
+		masterJSON: JSON.stringify(masterResult, null, 2),
+		prJSON: JSON.stringify(prResult, null, 2)
 	};
 
 	const suiteNames = _.uniq([].concat(masterResult.suites, prResult.suites).map(suite => suite.name));
@@ -165,9 +167,9 @@ function compareResults(masterResult, prResult) {
 				testCompare.percentage = percentage;
 				testCompare.badge = `https://img.shields.io/badge/performance-${percentage.replace('-', '--')}%25-${getBadgeColor(percent)}.svg`
 			} else {
-				testCompare.diff = "?";
+				testCompare.diff = "-";
 				testCompare.percentage = "";
-				testCompare.badge = `https://img.shields.io/badge/performance-%3F-lightgrey.svg`
+				testCompare.badge = `https://img.shields.io/badge/performance-skipped-lightgrey.svg`
 			}
 
 			suiteRes.tests.push(testCompare);
@@ -204,6 +206,24 @@ const commentTemplate = Handlebars.compile(`
 {{/each}}
 
 {{/each}}
+
+{{#if masterJSON}}
+<details>
+  <summary>Master detailed results</summary>
+  <pre>
+{{masterJSON}}
+  </pre>
+</details>
+{{/if}}
+
+{{#if prJSON}}
+<details>
+  <summary>PR detailed results</summary>
+  <pre>
+{{prJSON}}
+  </pre>
+</details>
+{{/if}}
 `);
 
 function addCommentToPR(number, result) {
