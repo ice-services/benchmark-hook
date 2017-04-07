@@ -6,6 +6,7 @@ const http 			= require("http");
 const bodyParser	= require("body-parser");
 const mkdir			= require("mkdirp");
 
+const _				= require("lodash");
 const Handlebars	= require("handlebars");
 const GitHubApi		= require("github");
 const exeq 			= require("exeq");
@@ -59,10 +60,12 @@ function processPullRequest(payload) {
 		console.log(`New PR opened! ID: ${prNumber}, Name: ${payload.pull_request.title}`);
 
 		const headGitUrl = payload.pull_request.head.repo.clone_url; // PR repo-ja
-		const baseGitUrl = payload.repository.clone_url; // Alap master repo
+		const headGitBranch = payload.pull_request.head.ref; // PR branch-e
+		const baseGitUrl = payload.pull_request.base.repo.clone_url; // Alap master repo
+		const baseGitBranch = payload.pull_request.base.ref; // Alap repo branch-e
 
-		console.log("Master: " + baseGitUrl);
-		console.log("PR: " + headGitUrl);
+		console.log("Master: ", baseGitUrl, ", Branch: ", baseGitBranch);
+		console.log("PR: ", headGitUrl, ", Branch: ", headGitBranch);
 
 		let workID = Math.random().toString(36).replace(/[^a-z]+/g, '');
 		console.log("Work ID: " + workID);
@@ -76,8 +79,8 @@ function processPullRequest(payload) {
 		let prFolder = path.join(folder, "pr");
 		mkdir.sync(prFolder);
 
-		runBenchmark(baseGitUrl, masterFolder).then(masterResult => {
-			return runBenchmark(headGitUrl, prFolder).then(prResult => {
+		runBenchmark(baseGitUrl, baseGitBranch, masterFolder).then(masterResult => {
+			return runBenchmark(headGitUrl, headGitBranch, prFolder).then(prResult => {
 				return compareResults(masterResult, prResult);
 			});
 		})
@@ -102,10 +105,10 @@ function processPush(payload) {
 	console.log("Push event!");
 }
 
-function runBenchmark(gitUrl, folder) {
+function runBenchmark(gitUrl, branch, folder) {
 	return Promise.resolve()
 		.then(() => {
-			return exeq("git clone " + gitUrl + " " + folder, "cd " + folder, "npm i")
+			return exeq("git clone " + gitUrl + " " + folder, "cd " + folder, "git checkout " + branch, "npm i")
 				.then(msgs => {
 					return require(path.join(__dirname, folder, SUITE_FILENAME));
 				})
@@ -120,42 +123,61 @@ function formatNum(num, decimals = 0, addSign = false) {
 }
 
 function compareResults(masterResult, prResult) {
-	let compared = [];
+	let comparedResult = {
+		name: masterResult.name,
+		suites: []
+	};
 
-	masterResult.forEach(masterSuite => {
-		const prSuite = prResult.find(item => item.name == masterSuite.name);
-		if (masterSuite && prSuite) {
+	const suiteNames = _.uniq([].concat(masterResult.suites, prResult.suites).map(suite => suite.name));
 
-			compared.push({
-				name: masterSuite.name,
-				tests: masterSuite.tests.map((masterTest) => {
-					const testName = masterTest.name;
-					const masterCount = masterTest.count;
+	suiteNames.forEach(suiteName => {
+		const mSuite = masterResult.suites.find(item => item.name == suiteName);
+		const pSuite = prResult.suites.find(item => item.name == suiteName);
 
-					const prTest = prSuite.tests.find(item => item.name == testName);
-					if (prTest) {
-						const prCount = prTest.count;
-						const percent = ((prCount - masterCount) * 100.0) / masterCount;
-						const percentage = formatNum(percent, 0, true)
+		let suiteRes = {
+			name: suiteName,
+			tests: []
+		};
 
-						return {
-							name: testName,
-							masterCount: formatNum(masterCount),
-							prCount: formatNum(prCount),
-							diff: formatNum(prCount - masterCount, 0, true),
-							percentage,
-							badge: `https://img.shields.io/badge/performance-${percentage.replace('-', '--')}%25-${getBadgeColor(percent)}.svg`
-						}
-					}
-				})
-			});
+		const testNames = _.uniq([].concat(mSuite ? mSuite.tests : [], pSuite ? pSuite.tests : []).map(test => test.name));
 
-		} else {
-			console.warn(`'${suiteName}' suite not defined both results!`);
-		}
+		testNames.forEach(testName => {
+			const mTest = mSuite && mSuite.tests.find(item => item.name == testName);
+			const pTest = mSuite && pSuite.tests.find(item => item.name == testName);
+
+			const masterRps = mTest && mTest.stat ? mTest.stat.rps : null;
+			const prRps = pTest && mTest.stat ? pTest.stat.rps : null;
+
+			let testCompare = {
+				name: testName,
+				skipped: mTest.skipped && pTest.skipped,
+				//masterResult: mTest,
+				//prResult: pTest,
+				masterRps: masterRps ? formatNum(masterRps) : "[SKIP]", 
+				prRps: prRps ? formatNum(prRps) : "[SKIP]"
+			};
+
+			if (masterRps && prRps) {
+				const percent = ((prRps - masterRps) * 100.0) / masterRps;
+				const percentage = formatNum(percent, 0, true)
+
+				testCompare.diff = formatNum(prRps - masterRps, 0, true);
+				testCompare.percentage = percentage;
+				testCompare.badge = `https://img.shields.io/badge/performance-${percentage.replace('-', '--')}%25-${getBadgeColor(percent)}.svg`
+			} else {
+				testCompare.diff = "?";
+				testCompare.percentage = "";
+				testCompare.badge = `https://img.shields.io/badge/performance-%3F-lightgrey.svg`
+			}
+
+			suiteRes.tests.push(testCompare);
+		});
+
+		comparedResult.suites.push(suiteRes);
+
 	});
 
-	return Promise.resolve(compared);
+	return Promise.resolve(comparedResult);
 }
 
 function getBadgeColor(value) {
@@ -168,15 +190,17 @@ function getBadgeColor(value) {
 }
 
 const commentTemplate = Handlebars.compile(`
-## Benchmark results
+# Benchmark results
 
-{{#each this}}
+## {{name}}
+
+{{#each suites}}
 ### Suite: {{name}}
 
-| Test | Master (ops/sec) | PR (ops/sec) | Diff (ops/sec) |
+| Test | Master (runs/sec) | PR (runs/sec) | Diff (runs/sec) |
 | ------- | ----- | ------- | ------- |
 {{#each tests}}
-|**{{name}}**| \`{{masterCount}}\` | \`{{prCount}}\` | \`{{diff}}\` ![Performance: {{percentage}}%]({{badge}}) |
+|**{{name}}**| \`{{masterRps}}\` | \`{{prRps}}\` | ![Performance: {{percentage}}%]({{badge}}) \`{{diff}}\` |
 {{/each}}
 
 {{/each}}
@@ -190,3 +214,145 @@ function addCommentToPR(number, result) {
 		body: commentTemplate(result)
 	});
 }
+/*
+
+compareResults(
+{
+  "name": "Simple example",
+  "suites": [
+    {
+      "name": "String concatenate",
+      "tests": [
+        {
+          "name": "Concat with '+'",
+          "fastest": true,
+          "stat": {
+            "duration": 5.007086467,
+            "cycle": 153,
+            "count": 153000,
+            "avg": 0.00003272605533986928,
+            "rps": 30556.692201816535,
+            "percent": 81.51821774001732
+          }
+        },
+        {
+          "name": "Concat with array & join",
+          "reference": true,
+          "stat": {
+            "duration": 5.051803217,
+            "cycle": 90,
+			"count": 90000,
+            "avg": 0.00005613114685555555,
+            "rps": 17387.420778295134,
+            "percent": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "Increment integer",
+      "tests": [
+        {
+          "name": "Increment with ++",
+          "fastest": true,
+          "stat": {
+            "duration": 4.999928158,
+            "cycle": 333918,
+            "count": 333918000,
+            "avg": 1.4973520918309286e-8,
+            "rps": 66784559.58726597,
+            "percent": 0
+          }
+        },
+        {
+          "name": "Increment with +=",
+          "skipped": true
+        },
+        {
+          "name": "Increment with = i + 1",
+          "stat": {
+            "duration": 4.998890598,
+            "cycle": 325496,
+            "count": 325496000,
+            "avg": 1.5357763530120187e-8,
+            "rps": 65113647.44213992,
+            "percent": -2.501943795770188
+          }
+        }
+      ]
+    }
+  ],
+  "timestamp": 1491573679617,
+  "generated": "Fri Apr 07 2017 16:01:19 GMT+0200 (Közép-európai nyári idő )",
+  "elapsedMs": 20902
+},{
+  "name": "Simple example",
+  "suites": [
+    {
+      "name": "String concatenate",
+      "tests": [
+        {
+          "name": "Concat with '+'",
+          "fastest": true,
+          "stat": {
+            "duration": 5.007086467,
+            "cycle": 153,
+            "count": 153000,
+            "avg": 0.00003272605533986928,
+            "rps": 30556.692201816535,
+            "percent": 71.51821774001732
+          }
+        },
+        {
+          "name": "Concat with array & join",
+          "reference": true,
+          "stat": {
+            "duration": 5.051803217,
+            "cycle": 90,
+			"count": 90000,
+            "avg": 0.00005613114685555555,
+            "rps": 17815.420778295134,
+            "percent": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "Increment integer",
+      "tests": [
+        {
+          "name": "Increment with ++",
+          "fastest": true,
+          "stat": {
+            "duration": 4.999928158,
+            "cycle": 333918,
+            "count": 333918000,
+            "avg": 1.4973520918309286e-8,
+            "rps": 66784559.58726597,
+            "percent": 0
+          }
+        },
+        {
+          "name": "Increment with +=",
+          "skipped": true
+        },
+        {
+          "name": "Increment with = i + 1",
+          "stat": {
+            "duration": 4.998890598,
+            "cycle": 325496,
+            "count": 325496000,
+            "avg": 1.5357763530120187e-8,
+            "rps": 65113647.44213992,
+            "percent": -2.501943795770188
+          }
+        }
+      ]
+    }
+  ],
+  "timestamp": 1491573679617,
+  "generated": "Fri Apr 07 2017 16:01:19 GMT+0200 (Közép-európai nyári idő )",
+  "elapsedMs": 20902
+}).then(res => {
+	console.log("Res:",JSON.stringify(res, null, 2));
+});*/

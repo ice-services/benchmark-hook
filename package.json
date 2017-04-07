@@ -19,12 +19,14 @@
   },
   "homepage": "https://github.com/ice-services/benchmark-hook#readme",
   "dependencies": {
+    "benchmarkify": "2.0.0",
     "body-parser": "1.17.1",
     "del": "2.2.2",
     "exeq": "3.0.0",
     "express": "4.15.2",
     "github": "9.2.0",
     "handlebars": "4.0.6",
+    "lodash": "4.17.4",
     "mkdirp": "0.5.1",
     "nodemon": "1.11.0"
   }
